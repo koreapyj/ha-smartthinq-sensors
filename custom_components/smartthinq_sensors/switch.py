@@ -14,6 +14,9 @@ from .wideq import (
     FEAT_EXPRESSFRIDGE,
     FEAT_EXPRESSMODE,
     FEAT_ICEPLUS,
+    FEAT_AUTODRY,
+    FEAT_POWERSAVE_BASIC,
+    FEAT_POWERSAVE_HUM,
 )
 
 from homeassistant.components.switch import (
@@ -98,6 +101,29 @@ AIR_PURIFIER_SWITCH: Tuple[ThinQSwitchEntityDescription, ...] = (
         turn_off_fn=lambda x: x.device.power(False),
     ),
 )
+AC_SWITCH: Tuple[ThinQSwitchEntityDescription, ...] = (
+    ThinQSwitchEntityDescription(
+        key=FEAT_AUTODRY,
+        name="Autodry",
+        value_fn=lambda x: x.device.get_autodry_state(),
+        turn_on_fn=lambda x: x.device.set_autodry(True),
+        turn_off_fn=lambda x: x.device.set_autodry(False),
+    ),
+    ThinQSwitchEntityDescription(
+        key=FEAT_POWERSAVE_BASIC,
+        name="Powersave (Basic)",
+        value_fn=lambda x: x.device.get_powersave_basic(),
+        turn_on_fn=lambda x: x.device.set_powersave_basic(True),
+        turn_off_fn=lambda x: x.device.set_powersave_basic(False),
+    ),
+    ThinQSwitchEntityDescription(
+        key=FEAT_POWERSAVE_HUM,
+        name="Powersave (Hum)",
+        value_fn=lambda x: x.device.get_powersave_hum(),
+        turn_on_fn=lambda x: x.device.set_powersave_hum(True),
+        turn_off_fn=lambda x: x.device.set_powersave_hum(False),
+    ),
+)
 
 AC_DUCT_SWITCH = ThinQSwitchEntityDescription(
     key="duct-zone",
@@ -159,6 +185,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             LGESwitch(lge_device, switch_desc)
             for switch_desc in AIR_PURIFIER_SWITCH
             for lge_device in lge_devices.get(DeviceType.AIR_PURIFIER, [])
+            if _switch_exist(lge_device, switch_desc)
+        ]
+    )
+
+    # add AC
+    lge_switch.extend(
+        [
+            LGESwitch(lge_device, switch_desc)
+            for switch_desc in AC_SWITCH
+            for lge_device in lge_devices.get(DeviceType.AC, [])
             if _switch_exist(lge_device, switch_desc)
         ]
     )

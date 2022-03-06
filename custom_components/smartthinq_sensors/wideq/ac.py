@@ -1,6 +1,7 @@
 """------------------for AC"""
 import enum
 import logging
+import json
 
 from typing import Optional
 
@@ -16,6 +17,7 @@ from . import (
     FEAT_HOT_WATER_TEMP,
     FEAT_IN_WATER_TEMP,
     FEAT_OUT_WATER_TEMP,
+    FEAT_AUTODRY,
 )
 
 from .core_exceptions import InvalidRequestError
@@ -27,10 +29,14 @@ LABEL_VANE_HSWING = "@AC_MAIN_WIND_DIRECTION_SWING_LEFT_RIGHT_W"
 LABEL_VANE_VSWING = "@AC_MAIN_WIND_DIRECTION_SWING_UP_DOWN_W"
 LABEL_VANE_SWIRL = "@AC_MAIN_WIND_DIRECTION_SWIRL_W"
 
+LABEL_PAC_AUTODRY = "@AUTODRY"
+LABEL_PAC_ENERGYSAVING = "@ENERGYSAVING"
+LABEL_PAC_HUMSAVE = "@HUMSAVE"
+
 AC_CTRL_BASIC = ["Control", "basicCtrl"]
 AC_CTRL_WIND_DIRECTION = ["Control", "wDirCtrl"]
 AC_CTRL_MISC = ["Control", "miscCtrl"]
-# AC_CTRL_SETTING = "settingInfo"
+AC_CTRL_SETTING = ["Control", "settingInfo"]
 # AC_CTRL_WIND_MODE = "wModeCtrl"
 AC_DUCT_ZONE_V1 = "DuctZone"
 AC_STATE_POWER_V1 = "InOutInstantPower"
@@ -38,6 +44,7 @@ AC_STATE_POWER_V1 = "InOutInstantPower"
 SUPPORT_AC_OPERATION_MODE = ["SupportOpMode", "support.airState.opMode"]
 SUPPORT_AC_WIND_STRENGTH = ["SupportWindStrength", "support.airState.windStrength"]
 SUPPORT_AC_RAC_SUBMODE = ["SupportRACSubMode", "support.racSubMode"]
+SUPPORT_AC_PACMODE = ["SupportPACMode", "support.pacMode"]
 AC_STATE_OPERATION = ["Operation", "airState.operation"]
 AC_STATE_OPERATION_MODE = ["OpMode", "airState.opMode"]
 AC_STATE_CURRENT_TEMP = ["TempCur", "airState.tempState.current"]
@@ -69,10 +76,17 @@ CMD_STATE_DUCT_ZONES = [
 CMD_ENABLE_EVENT_V2 = ["allEventEnable", "Set", "airState.mon.timeout"]
 
 # AC_STATE_CURRENT_HUMIDITY_V2 = "airState.humidity.current"
-# AC_STATE_AUTODRY_MODE_V2 = "airState.miscFuncState.autoDry"
+AC_STATE_AUTODRY_MODE_V2 = "airState.miscFuncState.autoDry"
+AC_STATE_POWERSAVE_BASIC = "airState.powerSave.basic"
+AC_STATE_POWERSAVE_HUM = "airState.powerSave.hum"
 # AC_STATE_AIRCLEAN_MODE_V2 = "airState.wMode.airClean"
 # AC_STATE_FILTER_MAX_TIME_V2 = "airState.filterMngStates.maxTime"
 # AC_STATE_FILTER_REMAIN_TIME_V2 = "airState.filterMngStates.useTime"
+AC_STATE_DIAGCODE_V2 = "airState.diagCode"
+
+CMD_STATE_AUTODRY = [AC_CTRL_SETTING, "Set", AC_STATE_AUTODRY_MODE_V2]
+CMD_STATE_POWERSAVE_BASIC = [AC_CTRL_SETTING, "Set", AC_STATE_POWERSAVE_BASIC]
+CMD_STATE_POWERSAVE_HUM = [AC_CTRL_SETTING, "Set", AC_STATE_POWERSAVE_HUM]
 
 DEFAULT_MIN_TEMP = 16
 DEFAULT_MAX_TEMP = 30
@@ -88,6 +102,9 @@ ZONE_OFF = "0"
 ZONE_ON = "1"
 ZONE_ST_CUR = "current"
 ZONE_ST_NEW = "new"
+
+AUTODRY_OFF = "0"
+AUTODRY_ON = "1"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -184,6 +201,13 @@ class ACSwingMode(enum.Enum):
     SwingOn = "@ON"
 
 
+class ACToggle(enum.Enum):
+    """Common toggle for an AC/HVAC device."""
+
+    Off = "@OFF"
+    On = "@ON"
+
+
 class AirConditionerDevice(Device):
     """A higher-level interface for a AC."""
 
@@ -201,7 +225,7 @@ class AirConditionerDevice(Device):
         self._supported_vertical_steps = None
         self._supported_vertical_swings = None
         self._temperature_range = None
-        self._temperature_step = TEMP_STEP_WHOLE
+        self._temperature_step = TEMP_STEP_HALF
         self._duct_zones = {}
 
         self._current_power = 0
@@ -250,12 +274,7 @@ class AirConditionerDevice(Device):
         return self._c2f_map.get(value, value)
 
     def _adjust_temperature_step(self, target_temp):
-        if self._temperature_step != TEMP_STEP_WHOLE:
-            return
-        if target_temp is None:
-            return
-        if int(target_temp) != target_temp:
-            self._temperature_step = TEMP_STEP_HALF
+        self._temperature_step = TEMP_STEP_HALF
 
     def _get_supported_operations(self):
         """Get a list of the ACOp Operations the device supports."""
@@ -322,10 +341,19 @@ class AirConditionerDevice(Device):
             self._temperature_range = [min_temp, max_temp]
         return self._temperature_range
 
+    def _is_pac_mode_supported(self, mode):
+        """Check if a specific pac mode is supported."""
+        supp_key = self._get_state_key(SUPPORT_AC_PACMODE)
+        if not self.model_info.enum_value(supp_key, mode):
+            _LOGGER.debug("%s %s is not supported", supp_key, mode)
+            return False
+        return True
+
     def _is_vane_mode_supported(self, mode):
         """Check if a specific vane mode is supported."""
         supp_key = self._get_state_key(SUPPORT_AC_RAC_SUBMODE)
         if not self.model_info.enum_value(supp_key, mode):
+            _LOGGER.debug("%s %s is not supported", supp_key, mode)
             return False
         return True
 
@@ -557,6 +585,21 @@ class AirConditionerDevice(Device):
             return None
         return self.conv_temp_unit(temp_range[1])
 
+    def get_autodry_state(self):
+        if not self._is_pac_mode_supported(LABEL_PAC_AUTODRY):
+            return None
+        return self._status.autodry_state
+
+    def get_powersave_basic(self):
+        if not self._is_pac_mode_supported(LABEL_PAC_ENERGYSAVING):
+            return None
+        return self._status.powersave_basic
+
+    def get_powersave_hum(self):
+        if not self._is_pac_mode_supported(LABEL_PAC_HUMSAVE):
+            return None
+        return self._status.powersave_hum
+
     def power(self, turn_on):
         """Turn on or off the device (according to a boolean)."""
 
@@ -573,6 +616,21 @@ class AirConditionerDevice(Device):
         keys = self._get_cmd_keys(CMD_STATE_OP_MODE)
         mode_value = self.model_info.enum_value(keys[2], ACMode[mode].value)
         self.set(keys[0], keys[1], key=keys[2], value=mode_value)
+
+    def set_autodry(self, status: bool):
+        """Set the status for autodry"""
+        keys = self._get_cmd_keys(CMD_STATE_AUTODRY)
+        self.set(keys[0], keys[1], key=keys[2], value=AUTODRY_ON if status else AUTODRY_OFF)
+
+    def set_powersave_basic(self, status: bool):
+        """Set the status for powersave_basic"""
+        keys = self._get_cmd_keys(CMD_STATE_POWERSAVE_BASIC)
+        self.set(keys[0], keys[1], key=keys[2], value=AUTODRY_ON if status else AUTODRY_OFF)
+
+    def set_powersave_hum(self, status: bool):
+        """Set the status for powersave_hum"""
+        keys = self._get_cmd_keys(CMD_STATE_POWERSAVE_HUM)
+        self.set(keys[0], keys[1], key=keys[2], value=AUTODRY_ON if status else AUTODRY_OFF)
 
     def set_fan_speed(self, speed):
         """Set the fan speed to a value from the `ACFanSpeed` enum."""
@@ -682,8 +740,6 @@ class AirConditionerDevice(Device):
             res[AC_STATE_POWER_V1] = self._current_power
 
         self._status = AirConditionerStatus(self, res)
-        if self._temperature_step == TEMP_STEP_WHOLE:
-            self._adjust_temperature_step(self._status.target_temp)
 
         # manage duct devices, if not ducted do nothing
         try:
@@ -877,6 +933,35 @@ class AirConditionerStatus(DeviceStatus):
     def duct_zones_state(self):
         key = self._get_state_key(AC_STATE_DUCT_ZONE)
         return self.to_int_or_none(self._data.get(key))
+
+    @property
+    def autodry_state(self):
+        key = self._get_state_key(AC_STATE_AUTODRY_MODE_V2)
+        try:
+            return ACToggle(self.lookup_enum(key, True)).name == "On"
+        except ValueError:
+            return None
+
+    @property
+    def powersave_basic(self):
+        key = self._get_state_key(AC_STATE_POWERSAVE_BASIC)
+        try:
+            return ACToggle(self.lookup_enum(key, True)).name == "On"
+        except ValueError:
+            return None
+
+    @property
+    def powersave_hum(self):
+        key = self._get_state_key(AC_STATE_POWERSAVE_HUM)
+        try:
+            return ACToggle(self.lookup_enum(key, True)).name == "On"
+        except ValueError:
+            return None
+
+    @property
+    def diag_code(self):
+        key = self._get_state_key(AC_STATE_DIAGCODE_V2)
+        return int(self._data.get(key))
 
     def _update_features(self):
         result = [

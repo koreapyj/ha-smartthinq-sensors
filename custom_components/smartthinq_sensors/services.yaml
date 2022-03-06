@@ -13,3 +13,41 @@ wake_up:
     entity:
       integration: smartthinq_sensors
       domain: sensor
+
+command:
+  name: Command
+  description: Send any commands
+  target:
+    entity:
+      integration: smartthinq_sensors
+  fields:
+    ctrl_key:
+      name: ctrl_key
+      required: true
+      selector:
+        text:
+    command:
+      name: command
+      required: true
+      selector:
+        text:
+    key:
+      name: key
+      selector:
+        text:
+    value:
+      name: value
+      selector:
+        text:
+    data:
+      name: data
+      selector:
+        text:
+    ctrl_path:
+      name: ctrl_path
+      selector:
+        text:
+    data_get_list:
+      name: data_get_list
+      selector:
+        object:

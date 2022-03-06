@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import voluptuous as vol
 from typing import Any, Callable, Tuple
 
 from .wideq import (
@@ -73,6 +74,7 @@ from .device_helpers import (
 # service definition
 SERVICE_REMOTE_START = "remote_start"
 SERVICE_WAKE_UP = "wake_up"
+SERVICE_COMMAND = "command"
 
 # general sensor attributes
 ATTR_CURRENT_COURSE = "current_course"
@@ -490,6 +492,19 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         "async_wake_up",
         [SUPPORT_WAKE_UP],
     )
+    platform.async_register_entity_service(
+        SERVICE_COMMAND,
+        {
+            vol.Required("ctrl_key"): str,
+            vol.Required("command"): str,
+            vol.Optional("key"): str,
+            vol.Optional("value"): str,
+            vol.Optional("data"): str,
+            vol.Optional("ctrl_path"): str,
+            vol.Optional("data_get_list"): object,
+        },
+        "async_command",
+    )
 
 
 class LGESensor(CoordinatorEntity, SensorEntity):
@@ -575,6 +590,10 @@ class LGESensor(CoordinatorEntity, SensorEntity):
         if self._api.type not in WM_DEVICE_TYPES:
             raise NotImplementedError()
         await self.hass.async_add_executor_job(self._api.device.wake_up)
+
+    async def async_command(self, ctrl_key, command, *, key=None, value=None, data=None, ctrl_path=None, data_get_list=None):
+        """Call any commands"""
+        await self.hass.async_add_executor_job(self._api.device.set_service_proxy, ctrl_key, command, key, value, data, ctrl_path, data_get_list)
 
 
 class LGEWashDeviceSensor(LGESensor):

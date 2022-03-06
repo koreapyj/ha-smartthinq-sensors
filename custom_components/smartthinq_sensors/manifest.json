@@ -1,8 +1,8 @@
 {
   "domain": "smartthinq_sensors",
   "name": "SmartThinQ LGE Sensors",
-  "documentation": "https://github.com/ollo69/ha-smartthinq-sensors",
-  "issue_tracker": "https://github.com/ollo69/ha-smartthinq-sensors/issues",
+  "documentation": "https://github.com/koreapyj/ha-smartthinq-sensors",
+  "issue_tracker": "https://github.com/koreapyj/ha-smartthinq-sensors/issues",
   "dependencies": [],
   "codeowners": ["@ollo69"],
   "requirements": ["pycountry>=20.7.3"],

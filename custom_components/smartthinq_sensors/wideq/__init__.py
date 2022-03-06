@@ -21,6 +21,10 @@ FEAT_HUMIDITY = "humidity"
 FEAT_HOT_WATER_TEMP = "hot_water_temperature"
 FEAT_IN_WATER_TEMP = "in_water_temperature"
 FEAT_OUT_WATER_TEMP = "out_water_temperature"
+FEAT_AUTODRY = "autodry"
+FEAT_POWERSAVE_BASIC = "powersave_basic"
+FEAT_POWERSAVE_HUM = "powersave_hum"
+FEAT_AIRCLEAN = "airclean"
 
 # wash devices features
 FEAT_DRYLEVEL = "dry_level"

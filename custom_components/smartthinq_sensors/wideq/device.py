@@ -605,6 +605,7 @@ class ModelInfo(object):
 
         options = self.value(key).options
         options_inv = {v: k for k, v in options.items()}  # Invert the map.
+        _LOGGER.debug("%s: %s", key, json.dumps(options_inv))
         return options_inv.get(name)
 
     def enum_name(self, key, value):
@@ -1204,6 +1205,32 @@ class Device(object):
 
         return [ctrl, cmd, key]
 
+    def _get_data(
+            self,
+            ctrl_key,
+            command=None,
+            *,
+            ctrl_path=None,
+            data_get_list=None,
+    ):
+        """Set a device's control for `key` to `value`.
+        """
+        if EMULATION:
+            return
+
+        if self._should_poll:
+            return
+
+        _LOGGER.debug("_get_data: ", json.dumps(data_get_list))
+
+        self._client.session.get_device_v2_data(
+            self._device_info.id,
+            ctrl_key,
+            command,
+            ctrl_path=ctrl_path,
+            data_get_list=data_get_list
+        )
+
     def _set_control(
             self,
             ctrl_key,
@@ -1244,6 +1271,15 @@ class Device(object):
         Overwrite for specific device settings.
         """
         return None
+    
+    def get_service_proxy(self, ctrl_key, command, ctrl_path=None, data_get_list=None):
+        return self.get(ctrl_key, command, ctrl_path=ctrl_path, data_get_list=data_get_list)
+    
+    def set_service_proxy(self, ctrl_key, command, key=None, value=None, data=None, ctrl_path=None, data_get_list=None):
+        if not data_get_list:
+            return self.set(ctrl_key, command, key=key, value=value, data=data, ctrl_path=ctrl_path)
+        else:
+            return self.get(ctrl_key, command, ctrl_path=ctrl_path, data_get_list=data_get_list)
 
     def set(self, ctrl_key, command, *, key=None, value=None, data=None, ctrl_path=None):
         """Set a device's control for `key` to `value`."""
@@ -1277,6 +1313,12 @@ class Device(object):
         if self._control_set == 0:
             self._control_set = 1
         return json.loads(base64.b64decode(data).decode("utf8"))
+
+    def get(self, ctrl_key, command, *, ctrl_path=None, data_get_list=None):
+        """Set a device's control for `key` to `value`."""
+        self._get_data(
+            ctrl_key, command, ctrl_path=ctrl_path, data_get_list=data_get_list
+        )
 
     def _get_control(self, key):
         """Look up a device's control value.

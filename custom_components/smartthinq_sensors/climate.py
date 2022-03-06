@@ -57,6 +57,8 @@ ATTR_SWING_HORIZONTAL = "swing_mode_horizontal"
 ATTR_SWING_VERTICAL = "swing_mode_vertical"
 SWING_PREFIX = ["Vertical", "Horizontal"]
 
+ATTR_DIAGCODE = "diagnostic_code"
+
 SCAN_INTERVAL = timedelta(seconds=120)
 
 _LOGGER = logging.getLogger(__name__)
@@ -179,8 +181,8 @@ class LGEACClimate(LGEClimate):
         self._attr_unique_id = f"{api.unique_id}-AC"
 
         self._hvac_mode_lookup = None
-        self._support_ver_swing = len(self._device.vertical_step_modes) > 0
-        self._support_hor_swing = len(self._device.horizontal_step_modes) > 0
+        self._support_ver_swing = len(self._device.vertical_swing_modes) > 0
+        self._support_hor_swing = len(self._device.horizontal_swing_modes) > 0
         self._set_hor_swing = self._support_hor_swing and not self._support_ver_swing
 
     def _available_hvac_modes(self):
@@ -197,9 +199,9 @@ class LGEACClimate(LGEClimate):
     def _get_swing_mode(self, hor_mode=False):
         """Return the current swing mode for vert of hor mode."""
         if hor_mode:
-            mode = self._api.state.horizontal_step_mode
+            mode = self._api.state.horizontal_swing_mode
         else:
-            mode = self._api.state.vertical_step_mode
+            mode = self._api.state.vertical_swing_mode
         if mode:
             return f"{SWING_PREFIX[1 if hor_mode else 0]}{mode}"
         return None
@@ -207,7 +209,9 @@ class LGEACClimate(LGEClimate):
     @property
     def extra_state_attributes(self):
         """Return the optional state attributes with device specific additions."""
-        attr = {}
+        attr = {
+            ATTR_DIAGCODE: self._api.state.diag_code
+        }
         if self._support_hor_swing:
             attr[ATTR_SWING_HORIZONTAL] = self._get_swing_mode(True)
         if self._support_ver_swing:
@@ -313,31 +317,31 @@ class LGEACClimate(LGEClimate):
             swing_mode, SWING_PREFIX[1 if set_hor_swing else 0]
         )
         if set_hor_swing:
-            if dev_mode in self._device.horizontal_step_modes:
+            if dev_mode in self._device.horizontal_swing_modes:
                 avl_mode = True
-                curr_mode = self._api.state.horizontal_step_mode
+                curr_mode = self._api.state.horizontal_swing_mode
         elif swing_mode.startswith(SWING_PREFIX[0]):
-            if dev_mode in self._device.vertical_step_modes:
+            if dev_mode in self._device.vertical_swing_modes:
                 avl_mode = True
-                curr_mode = self._api.state.vertical_step_mode
+                curr_mode = self._api.state.vertical_swing_mode
 
         if not avl_mode:
             raise ValueError(f"Invalid swing_mode [{swing_mode}].")
 
         if curr_mode != dev_mode:
             if set_hor_swing:
-                self._device.set_horizontal_step_mode(dev_mode)
+                self._device.set_horizontal_swing_mode(dev_mode)
             else:
-                self._device.set_vertical_step_mode(dev_mode)
+                self._device.set_vertical_swing_mode(dev_mode)
         self._set_hor_swing = set_hor_swing
 
     @property
     def swing_modes(self):
         """Return the list of available swing modes."""
         list_modes = list()
-        for mode in self._device.vertical_step_modes:
+        for mode in self._device.vertical_swing_modes:
             list_modes.append(f"{SWING_PREFIX[0]}{mode}")
-        for mode in self._device.horizontal_step_modes:
+        for mode in self._device.horizontal_swing_modes:
             list_modes.append(f"{SWING_PREFIX[1]}{mode}")
         return list_modes
 

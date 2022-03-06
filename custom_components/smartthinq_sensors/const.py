@@ -3,7 +3,7 @@ Support to interface with LGE ThinQ Devices.
 """
 
 __version__ = "0.12.10"
-PROJECT_URL = "https://github.com/ollo69/ha-smartthinq-sensors/"
+PROJECT_URL = "https://github.com/koreapyj/ha-smartthinq-sensors/"
 ISSUE_URL = "{}issues".format(PROJECT_URL)
 
 DOMAIN = "smartthinq_sensors"

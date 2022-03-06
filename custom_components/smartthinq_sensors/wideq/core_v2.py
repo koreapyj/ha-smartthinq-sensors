@@ -203,7 +203,7 @@ def lgedm2_post(
 ):
     """Make an HTTP request in the format used by the API servers."""
 
-    _LOGGER.debug("lgedm2_post before: %s", url)
+    _LOGGER.debug("lgedm2_post before: %s %s", url, data)
 
     res = wideq_post(
         url,
@@ -859,6 +859,36 @@ class Session(object):
             })
             res = self.post("rti/rtiControl", payload)
             _LOGGER.debug("Set V1 result: %s", str(res))
+
+        return res
+
+    def get_device_v2_data(
+            self,
+            device_id,
+            ctrl_key,
+            command="Get",
+            *,
+            ctrl_path=None,
+            data_get_list=None,
+    ):
+        """Control a device's settings based on api V2."""
+
+        res = {}
+        payload = None
+        path = ctrl_path or "control-sync"
+        cmd_path = f"service/devices/{device_id}/{path}"
+        if isinstance(ctrl_key, dict):
+            payload = ctrl_key
+        elif command is not None:
+            payload = {
+                "ctrlKey": ctrl_key,
+                "command": command,
+                "dataGetList": data_get_list or [],
+            }
+
+        if payload:
+            res = self.post2(cmd_path, payload)
+            _LOGGER.debug("Get V2 result: %s", str(res))
 
         return res
 
