@@ -20,10 +20,7 @@ SUPPORT_RAC_SUBMODE = ["SupportRACSubMode", "support.racSubMode"]
 
 SUPPORT_VANE_HSTEP = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_STEP_LEFT_RIGHT_W"]
 SUPPORT_VANE_VSTEP = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_STEP_UP_DOWN_W"]
-SUPPORT_VANE_HSWING = [
-    SUPPORT_RAC_SUBMODE,
-    "@AC_MAIN_WIND_DIRECTION_SWING_LEFT_RIGHT_W",
-]
+SUPPORT_VANE_HSWING = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_SWING_LEFT_RIGHT_W"]
 SUPPORT_VANE_VSWING = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_SWING_UP_DOWN_W"]
 SUPPORT_JET_COOL = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_MODE_COOL_JET_W"]
 SUPPORT_JET_HEAT = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_MODE_HEAT_JET_W"]
@@ -567,43 +564,73 @@ class AirConditionerDevice(Device):
         return self._supported_fan_speeds
 
     @property
+    def is_horizontal_step_mode_supported(self):
+        return self._is_mode_supported(SUPPORT_VANE_HSTEP)
+
+    @property
     def horizontal_step_modes(self):
         """Return a list of available horizontal step modes."""
         if self._supported_horizontal_steps is None:
             self._supported_horizontal_steps = []
-            if not self._is_mode_supported(SUPPORT_VANE_HSTEP):
-                return []
+            if self._is_mode_supported(SUPPORT_VANE_HSTEP):
+                key = self._get_state_key(STATE_WDIR_HSTEP)
+                values = self.model_info.value(key)
 
-            key = self._get_state_key(STATE_WDIR_HSTEP)
-            values = self.model_info.value(key)
-            if not hasattr(values, "options"):
-                return []
+                """Todo: STATE_WDIR_HSTEP: Range"""
+                if hasattr(values, "options"):
+                    mapping = values.options
+                    mode_list = [e.value for e in ACHStepMode]
+                    self._supported_horizontal_steps = [
+                        ACHStepMode(o).name for o in mapping.values() if o in mode_list
+                    ]
+                else:
+                    return []
+            else:
+                key = self._get_state_key(STATE_WDIR_HSWING)
+                values = self.model_info.value(key)
 
-            mapping = values.options
-            mode_list = [e.value for e in ACHStepMode]
-            self._supported_horizontal_steps = [
-                ACHStepMode(o).name for o in mapping.values() if o in mode_list
-            ]
+                if hasattr(values, "options") and MODE_ON in values.options.values():
+                    self._supported_horizontal_steps = [
+                        "Off",
+                        "Swing"
+                    ]
+                else:
+                    return []
         return self._supported_horizontal_steps
+
+    @property
+    def is_vertical_step_mode_supported(self):
+        return self._is_mode_supported(SUPPORT_VANE_VSTEP)
 
     @property
     def vertical_step_modes(self):
         """Return a list of available vertical step modes."""
         if self._supported_vertical_steps is None:
             self._supported_vertical_steps = []
-            if not self._is_mode_supported(SUPPORT_VANE_VSTEP):
-                return []
+            if self._is_mode_supported(SUPPORT_VANE_VSTEP):
+                key = self._get_state_key(STATE_WDIR_VSTEP)
+                values = self.model_info.value(key)
 
-            key = self._get_state_key(STATE_WDIR_VSTEP)
-            values = self.model_info.value(key)
-            if not hasattr(values, "options"):
-                return []
+                """Todo: STATE_WDIR_VSTEP: Range"""
+                if hasattr(values, "options"):
+                    mapping = values.options
+                    mode_list = [e.value for e in ACVStepMode]
+                    self._supported_vertical_steps = [
+                        ACVStepMode(o).name for o in mapping.values() if o in mode_list
+                    ]
+                else:
+                    return []
+            else:
+                key = self._get_state_key(STATE_WDIR_VSWING)
+                values = self.model_info.value(key)
 
-            mapping = values.options
-            mode_list = [e.value for e in ACVStepMode]
-            self._supported_vertical_steps = [
-                ACVStepMode(o).name for o in mapping.values() if o in mode_list
-            ]
+                if hasattr(values, "options") and MODE_ON in values.options.values():
+                    self._supported_vertical_steps = [
+                        "Off",
+                        "Swing"
+                    ]
+                else:
+                    return []
         return self._supported_vertical_steps
 
     @property
@@ -723,9 +750,13 @@ class AirConditionerDevice(Device):
         """Set the horizontal step to a value from the `ACHStepMode` enum."""
         if mode not in self.horizontal_step_modes:
             raise ValueError(f"Invalid horizontal step mode: {mode}")
-        keys = self._get_cmd_keys(CMD_STATE_WDIR_HSTEP)
-        step_mode = self.model_info.enum_value(keys[2], ACHStepMode[mode].value)
-        await self.set(keys[0], keys[1], key=keys[2], value=step_mode)
+
+        if self._is_mode_supported(SUPPORT_VANE_HSTEP):
+            keys = self._get_cmd_keys(CMD_STATE_WDIR_HSTEP)
+            step_mode = self.model_info.enum_value(keys[2], ACHStepMode[mode].value)
+            await self.set(keys[0], keys[1], key=keys[2], value=step_mode)
+        else:
+            await self.horizontal_swing_mode(mode == "Swing")
 
     async def horizontal_swing_mode(self, value: bool):
         """Set the horizontal swing on or off."""
@@ -741,9 +772,13 @@ class AirConditionerDevice(Device):
         """Set the vertical step to a value from the `ACVStepMode` enum."""
         if mode not in self.vertical_step_modes:
             raise ValueError(f"Invalid vertical step mode: {mode}")
-        keys = self._get_cmd_keys(CMD_STATE_WDIR_VSTEP)
-        step_mode = self.model_info.enum_value(keys[2], ACVStepMode[mode].value)
-        await self.set(keys[0], keys[1], key=keys[2], value=step_mode)
+
+        if self._is_mode_supported(SUPPORT_VANE_VSTEP):
+            keys = self._get_cmd_keys(CMD_STATE_WDIR_VSTEP)
+            step_mode = self.model_info.enum_value(keys[2], ACVStepMode[mode].value)
+            await self.set(keys[0], keys[1], key=keys[2], value=step_mode)
+        else:
+            await self.vertical_swing_mode(mode == "Swing")
 
     async def vertical_swing_mode(self, value: bool):
         """Set the vertical swing on or off."""
@@ -1055,13 +1090,19 @@ class AirConditionerStatus(DeviceStatus):
     @property
     def horizontal_step_mode(self):
         """Return current horizontal step mode."""
-        key = self._get_state_key(STATE_WDIR_HSTEP)
-        if (value := self.lookup_enum(key, True)) is None:
-            return None
-        try:
-            return ACHStepMode(value).name
-        except ValueError:
-            return None
+        if self._device.is_horizontal_step_mode_supported:
+            key = self._get_state_key(STATE_WDIR_HSTEP)
+            if (value := self.lookup_enum(key, True)) is None:
+                return None
+            try:
+                return ACHStepMode(value).name
+            except ValueError:
+                return None
+        else:
+            key = self._get_state_key(STATE_WDIR_HSWING)
+            if (value := self.lookup_enum(key, True)) is None:
+                return None
+            return 'Swing' if value == MODE_ON else 'Off'
 
     @property
     def is_horizontal_swing_on(self):
@@ -1074,13 +1115,19 @@ class AirConditionerStatus(DeviceStatus):
     @property
     def vertical_step_mode(self):
         """Return current vertical step mode."""
-        key = self._get_state_key(STATE_WDIR_VSTEP)
-        if (value := self.lookup_enum(key, True)) is None:
-            return None
-        try:
-            return ACVStepMode(value).name
-        except ValueError:
-            return None
+        if self._device.is_vertical_step_mode_supported:
+            key = self._get_state_key(STATE_WDIR_VSTEP)
+            if (value := self.lookup_enum(key, True)) is None:
+                return None
+            try:
+                return ACVStepMode(value).name
+            except ValueError:
+                return None
+        else:
+            key = self._get_state_key(STATE_WDIR_VSWING)
+            if (value := self.lookup_enum(key, True)) is None:
+                return None
+            return 'Swing' if value == MODE_ON else 'Off'
 
     @property
     def is_vertical_swing_on(self):
