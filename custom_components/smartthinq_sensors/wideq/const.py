@@ -31,6 +31,9 @@ class StateOptions(StrEnum):
 class AirConditionerFeatures(StrEnum):
     """Features for LG Air Conditioner devices."""
 
+    ENERGY_MONTHLY = "energy_monthly"
+    ENERGY_MONTHLY_DATE = "energy_monthly_date"
+    ENERGY_MONTHLY_OPERATION_TIME = "energy_monthly_operation_time"
     ENERGY_CURRENT = "energy_current"
     HOT_WATER_TEMP = "hot_water_temperature"
     HUMIDITY = "humidity"

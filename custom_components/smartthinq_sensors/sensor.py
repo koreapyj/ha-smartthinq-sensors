@@ -18,6 +18,7 @@ from homeassistant.const import (
     PERCENTAGE,
     STATE_UNAVAILABLE,
     UnitOfPower,
+    UnitOfEnergy,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -242,6 +243,17 @@ AC_SENSORS: Tuple[ThinQSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
+    ),
+    ThinQSensorEntityDescription(
+        key=AirConditionerFeatures.ENERGY_MONTHLY,
+        name="Energy (Monthly)",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        feature_attributes={
+            "current_date": AirConditionerFeatures.ENERGY_MONTHLY_DATE,
+            "operationTime": AirConditionerFeatures.ENERGY_MONTHLY_OPERATION_TIME,
+        },
     ),
     ThinQSensorEntityDescription(
         key=AirConditionerFeatures.HUMIDITY,

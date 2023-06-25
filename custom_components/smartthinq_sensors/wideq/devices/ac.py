@@ -10,6 +10,7 @@ from ..core_exceptions import InvalidRequestError
 from ..core_util import TempUnitConversion
 from ..device import Device, DeviceStatus
 from ..device_info import DeviceInfo
+import datetime as DateTime
 
 SUPPORT_OPERATION_MODE = ["SupportOpMode", "support.airState.opMode"]
 SUPPORT_WIND_STRENGTH = ["SupportWindStrength", "support.airState.windStrength"]
@@ -19,9 +20,13 @@ SUPPORT_RAC_MODE = ["SupportRACMode", "support.racMode"]
 SUPPORT_RAC_SUBMODE = ["SupportRACSubMode", "support.racSubMode"]
 
 SUPPORT_VANE_HSTEP = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_STEP_LEFT_RIGHT_W"]
+#SUPPORT_VANE_HSTEP_ALT_NAME = 
 SUPPORT_VANE_VSTEP = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_STEP_UP_DOWN_W"]
+SUPPORT_VANE_VSTEP_ALT_NAME = [SUPPORT_RAC_SUBMODE, "3"]
 SUPPORT_VANE_HSWING = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_SWING_LEFT_RIGHT_W"]
+# SUPPORT_VANE_HSWING_ALT_NAME = [SUPPORT_RAC_SUBMODE, "6"]
 SUPPORT_VANE_VSWING = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_DIRECTION_SWING_UP_DOWN_W"]
+SUPPORT_VANE_VSWING_ALT_NAME = [SUPPORT_RAC_SUBMODE, "5"]
 SUPPORT_JET_COOL = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_MODE_COOL_JET_W"]
 SUPPORT_JET_HEAT = [SUPPORT_RAC_SUBMODE, "@AC_MAIN_WIND_MODE_HEAT_JET_W"]
 SUPPORT_AIRCLEAN = [SUPPORT_RAC_MODE, "@AIRCLEAN"]
@@ -280,6 +285,9 @@ class AirConditionerDevice(Device):
         self._current_power = None
         self._current_power_supported = True
 
+        self._energy_monthly = None
+        self._energy_monthly_supported = None
+
         self._filter_status = None
         self._filter_status_supported = True
 
@@ -311,6 +319,13 @@ class AirConditionerDevice(Device):
             return False
         supp_key = self._get_state_key(key[0])
         return self.model_info.enum_value(supp_key, key[1]) is not None
+
+    def _is_mode_supported_by_name(self, key):
+        """Check if a specific mode for support key is supported by number name."""
+        if not isinstance(key, list):
+            return False
+        supp_key = self._get_state_key(key[0])
+        return self.model_info.enum_name(supp_key, key[1]) is not None
 
     def _get_supported_operations(self):
         """Get a list of the ACOp Operations the device supports."""
@@ -576,7 +591,6 @@ class AirConditionerDevice(Device):
                 key = self._get_state_key(STATE_WDIR_HSTEP)
                 values = self.model_info.value(key)
 
-                """Todo: STATE_WDIR_HSTEP: Range"""
                 if hasattr(values, "options"):
                     mapping = values.options
                     mode_list = [e.value for e in ACHStepMode]
@@ -600,37 +614,40 @@ class AirConditionerDevice(Device):
 
     @property
     def is_vertical_step_mode_supported(self):
-        return self._is_mode_supported(SUPPORT_VANE_VSTEP)
+        return self._is_mode_supported(SUPPORT_VANE_VSTEP) or self._is_mode_supported_by_name(SUPPORT_VANE_VSTEP_ALT_NAME)
 
     @property
     def vertical_step_modes(self):
         """Return a list of available vertical step modes."""
         if self._supported_vertical_steps is None:
             self._supported_vertical_steps = []
-            if self._is_mode_supported(SUPPORT_VANE_VSTEP):
+            if self._is_mode_supported(SUPPORT_VANE_VSTEP) or self._is_mode_supported_by_name(SUPPORT_VANE_VSTEP_ALT_NAME):
                 key = self._get_state_key(STATE_WDIR_VSTEP)
                 values = self.model_info.value(key)
 
-                """Todo: STATE_WDIR_VSTEP: Range"""
                 if hasattr(values, "options"):
                     mapping = values.options
                     mode_list = [e.value for e in ACVStepMode]
                     self._supported_vertical_steps = [
                         ACVStepMode(o).name for o in mapping.values() if o in mode_list
                     ]
-                else:
-                    return []
-            else:
+                    if "Swing" in self._supported_vertical_steps:
+                        return self._supported_vertical_steps
+                elif hasattr(values, "step"):
+                    """ Todo : WDIR_VSTEP is Range sometimes but currently not supported """
+
+            if self._is_mode_supported(SUPPORT_VANE_VSWING) or self._is_mode_supported_by_name(SUPPORT_VANE_VSWING_ALT_NAME):
                 key = self._get_state_key(STATE_WDIR_VSWING)
                 values = self.model_info.value(key)
 
                 if hasattr(values, "options") and MODE_ON in values.options.values():
                     self._supported_vertical_steps = [
-                        "Off",
                         "Swing"
                     ]
-                else:
-                    return []
+
+            if len(self._supported_vertical_steps) > 0 and "Off" not in self._supported_vertical_steps:
+                self._supported_vertical_steps = ["Off"] + self._supported_vertical_steps
+
         return self._supported_vertical_steps
 
     @property
@@ -901,6 +918,12 @@ class AirConditionerDevice(Device):
             self._filter_status_supported = False
             return None
 
+    async def get_energy_state_v2(self):
+        datestr = DateTime.datetime.now(DateTime.timezone(DateTime.timedelta(hours=self.device_info.utcoffset))).strftime("%Y-%m-%d")
+        result = await self._mon._client.session.get2(f"service/aircon/{self._device_info.device_id}/energy-history?period=month&startDate={datestr}&endDate={datestr}")
+        _LOGGER.debug("energy_state: %s", result[0])
+        return result[0]
+
     async def set(
         self, ctrl_key, command, *, key=None, value=None, data=None, ctrl_path=None
     ):
@@ -944,6 +967,8 @@ class AirConditionerDevice(Device):
         if not self.is_air_to_water:
             self._filter_status = await self.get_filter_state_v2()
 
+        self._energy_monthly = await self.get_energy_state_v2()
+
     async def poll(self) -> AirConditionerStatus | None:
         """Poll the device's current state."""
         res = await self._device_poll(
@@ -968,7 +993,16 @@ class AirConditionerDevice(Device):
             if not self._status.update_filter_status(self._filter_status):
                 self._filter_status = None
                 self._filter_status_supported = False
-
+        if self._energy_monthly:
+            if value := self._status.to_int_or_none(self._energy_monthly.get("energyData")):
+                date = self._energy_monthly.get("usedDate")
+                operation_time = self._status.to_int_or_none(self._energy_monthly.get("operationTime"))
+                self._status._update_feature(AirConditionerFeatures.ENERGY_MONTHLY, value, False)
+                self._status._update_feature(AirConditionerFeatures.ENERGY_MONTHLY_DATE, date, False)
+                self._status._update_feature(AirConditionerFeatures.ENERGY_MONTHLY_OPERATION_TIME, operation_time, False)
+            else:
+                self._energy_monthly = None
+                self._energy_monthly_supported = False
         # manage duct devices, does nothing if not ducted
         try:
             await self.update_duct_zones()

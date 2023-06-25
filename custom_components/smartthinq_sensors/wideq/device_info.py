@@ -244,3 +244,7 @@ class DeviceInfo:
     def snapshot(self) -> Optional[dict[str, Any]]:
         """Return the snapshot data associated to the device."""
         return self._data.get("snapshot")
+    
+    @property
+    def utcoffset(self):
+        return self._data.get("utcOffset")
